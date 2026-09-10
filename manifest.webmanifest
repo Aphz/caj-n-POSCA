@@ -1,0 +1,24 @@
+{
+  "name": "Cajón POSCA",
+  "short_name": "POSCA",
+  "description": "Inventario, rueda cromática y escáner de códigos para marcadores POSCA. Todo se guarda en tu dispositivo.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0A0C",
+  "theme_color": "#0A0A0C",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "art"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Escáner", "short_name": "Escanear", "url": "./?sheet=escaner", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Rueda cromática", "short_name": "Rueda", "url": "./?sheet=rueda", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ]
+}
