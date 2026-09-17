@@ -3,7 +3,7 @@
    precachea en la instalación y se sirve desde caché (funciona sin red).
    Las fuentes de Google se cachean la primera vez que se descargan.
    Cada despliegue cambia VERSION → nuevo caché → la app avisa «Actualizar». */
-var VERSION = "1.0.0";
+var VERSION = "1.1.0";
 var SHELL = "posca-shell-" + VERSION;
 var FONTS = "posca-fonts";
 var ASSETS = [

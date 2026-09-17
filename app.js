@@ -252,8 +252,10 @@ function hexOf(co,mode){
 }
 function rotate(hex,deg,mode){ var co=coordsOf(hex,mode); co.h=((co.h+deg)%360+360)%360; return hexOf(co,mode); }
 function onColor(hex){
+  /* elige el texto (oscuro o blanco) con mayor contraste WCAG calculado, no un umbral */
   var c=hex2rgb(hex), L=0.2126*toLin(c[0])+0.7152*toLin(c[1])+0.0722*toLin(c[2]);
-  return L>0.42 ? "#14171A" : "#FFFFFF";
+  var cw=(1.05)/(L+0.05), cd=(L+0.05)/(0.0118+0.05);
+  return cd>=cw ? "#14171A" : "#FFFFFF";
 }
 
 /* nombre descriptivo a partir del color */
@@ -580,7 +582,7 @@ function labelC(c){ return c.en||c.es||("POSCA "+c.code); }
    localStorage como copia de seguridad síncrona (se escribe también al
    cerrar la página). Nada sale del teléfono salvo que exportes un
    respaldo .json desde «Datos». */
-var APP_VERSION="1.0.0";
+var APP_VERSION="1.1.0";
 var DB_NAME="cajon-posca", DB_STORE="kv", DB_KEY="state", LS_KEY="posca.state";
 var timer=null, delay=400, dirty=false, storageMode="";
 function setChip(s,t){ var c=byId("savechip"); if(!c) return; c.setAttribute("data-s",s); c.querySelector(".txt").textContent=t; }
@@ -633,7 +635,7 @@ function loadLocal(){
   return idbGet().then(function(t){ var s=parseState(t); if(s){ storageMode="idb"; return s; }
     var l=parseState(lsGet()); if(l){ storageMode="ls"; return l; } return null; })
   .catch(function(){ var l=parseState(lsGet()); if(l){ storageMode="ls"; return l; } return null; })
-  .then(function(s){ if(s) return s; s=embeddedState(); storageMode=storageMode||"seed"; return s||freshState(); });
+  .then(function(s){ if(s) return s; storageMode="none"; return null; });
 }
 function serialize(){ return JSON.stringify(state); }
 function queueSave(){
@@ -665,6 +667,7 @@ var ui={
   layer: pref("layer","0")==="1",
   co:null, modal:null, readOnly:false,
   data:{open:false,msg:"",pending:null,confirm:"",showRaw:false},
+  ficha:null, fichaDel:false, welcome:false,
   scan:{active:false, code:"", msg:"", err:"", linking:false, lastOk:""}
 };
 function keysOf(o){ var r=[]; for(var k in o) if(o[k]) r.push(k); return r; }
@@ -714,42 +717,42 @@ function estadoSelect(mk){
   var o=ESTADOS.map(function(e){ return '<option value="'+e.k+'"'+(mk.estado===e.k?" selected":"")+'>'+esc(e.label)+'</option>'; }).join("");
   return '<select class="pill e-'+mk.estado+'" data-act="estado" data-id="'+esc(mk.id)+'" aria-label="Estado">'+o+'</select>';
 }
-function invCard(mk){
+var SVG_CHEV='<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg>';
+function invCard(mk,opts){
+  opts=opts||{};
   var eans=state.eans.filter(function(e){ return e.tipo===mk.tipo&&e.codigo===mk.codigo; });
-  return '<article class="iv'+(mk.estado==="agotado"?" gone":"")+'">'+
-    '<div class="slab" '+sty(mk.hex)+'>'+
+  var card='<button type="button" class="iv'+(mk.estado==="agotado"?" gone":"")+'" data-act="open" data-id="'+esc(mk.id)+'" aria-label="Abrir ficha de '+esc(mk.codigo)+' '+esc(labelOf(mk))+'">'+
+    '<span class="slab" '+sty(mk.hex)+'>'+
       (mk.familia!=="estandar"?'<span class="fam">'+esc(famLabel(mk.familia))+'</span>':'')+
-      (mk.reponer?'<span class="flag">Reponer</span>':'')+
       '<span class="n">'+esc(mk.codigo||"—")+'</span>'+
-    '</div>'+
-    '<div class="body">'+
-      '<div class="nm">'+esc(nameEn(mk)||mk.color||"(sin nombre)")+'</div>'+
-      '<div class="al">'+esc(nameEs(mk))+'</div>'+
-      '<div class="crow" style="gap:6px;flex-wrap:wrap">'+tipBadge(mk.tipo)+estadoSelect(mk)+'</div>'+
-      '<div class="mt">'+(mk.fechaCompra?"Comprado "+esc(fmtDate(mk.fechaCompra)):"Act. "+esc(fmtDate(mk.actualizado)))+
-        (eans.length?' · '+esc(eans[0].ean)+(eans[0].verificado?"":" ?"):"")+'</div>'+
-      '<div class="foot">'+
-        '<div class="qty"><button type="button" data-act="dec" data-id="'+esc(mk.id)+'" aria-label="Restar">−</button>'+
-        '<span>'+mk.cantidad+'</span>'+
-        '<button type="button" data-act="inc" data-id="'+esc(mk.id)+'" aria-label="Sumar">+</button></div>'+
-        '<button type="button" class="tiny" data-act="rep" data-id="'+esc(mk.id)+'" aria-pressed="'+(mk.reponer?"true":"false")+'">Reponer</button>'+
-        '<button type="button" class="tiny" data-act="towheel" data-hex="'+esc(mk.hex)+'" title="Usar este color como base en la rueda">Rueda</button>'+
-        '<button type="button" class="tiny" data-act="edit" data-id="'+esc(mk.id)+'">Editar</button>'+
-      '</div>'+
-    '</div></article>';
+    '</span>'+
+    '<span class="body">'+
+      '<span class="nm">'+esc(nameEn(mk)||mk.color||"(sin nombre)")+'<span class="al">'+esc(nameEs(mk))+'</span></span>'+
+      '<span class="meta">'+tipBadge(mk.tipo)+'<span class="pill e-'+mk.estado+'">'+esc(estLabel(mk.estado))+'</span>'+
+        (mk.reponer?'<span class="flag">Reponer</span>':'')+
+        (mk.cantidad!==1?'<span class="qty">×'+mk.cantidad+'</span>':'')+
+        (eans.length?'<span class="qty">'+esc(eans[0].ean)+(eans[0].verificado?"":" ?")+'</span>':'')+
+      '</span>'+
+    '</span>'+
+    '<span class="chev">'+SVG_CHEV+'</span></button>';
+  if(opts.plain) return card;
+  return '<div class="swp" data-id="'+esc(mk.id)+'"><div class="acts">'+
+    '<button type="button" class="a-inc" data-act="inc" data-id="'+esc(mk.id)+'" aria-label="Sumar una unidad">+1<small>unidad</small></button>'+
+    '<button type="button" class="a-rep" data-act="rep" data-id="'+esc(mk.id)+'" aria-pressed="'+(mk.reponer?"true":"false")+'">Reponer<small>'+(mk.reponer?"quitar":"marcar")+'</small></button>'+
+    '</div>'+card+'</div>';
 }
 function emptyBox(t,p,btn){ return '<div class="empty"><b>'+esc(t)+'</b><p>'+esc(p)+'</p>'+(btn||"")+'</div>'; }
 
 /* ===================== lámina: cajón ===================== */
 function sheetCajon(){
-  return '<div class="stats" id="stats"></div>'+
-    '<div class="filters">'+
-      '<label class="search"><span class="lbl" aria-hidden="true">Buscar</span>'+
-      '<input type="search" id="q" placeholder="Número, nombre, nota o código de barras…" aria-label="Buscar en el cajón"></label>'+
-      '<button type="button" class="big alt" data-act="add">Agregar marcador</button>'+
+  return '<div class="filters">'+
+      '<label class="search"><span class="lbl desk" aria-hidden="true">Buscar</span>'+
+      '<input type="search" id="q" placeholder="Número, nombre o código de barras" aria-label="Buscar en el cajón"></label>'+
+      '<button type="button" class="big alt desk" data-act="add">Agregar marcador</button>'+
     '</div>'+
     '<div class="filters"><div class="chips" id="chips-tipo"></div></div>'+
     '<div class="filters"><div class="chips" id="chips-estado"></div></div>'+
+    '<div class="stats" id="stats"></div>'+
     '<div class="rescount" id="rescount"></div>'+
     '<div id="invresults"></div>';
 }
@@ -757,12 +760,16 @@ function paintStats(){
   var el=byId("stats"); if(!el) return;
   var un=0, cols={};
   state.markers.forEach(function(m){ un+=m.cantidad; if(m.codigo) cols[m.codigo]=1; });
-  var s=[["Unidades",un,""],["Números",Object.keys(cols).length,""],["Puntas",tiposPresentes().length,""],
-    ["Por acabarse",countBy(function(m){return m.estado==="por_acabarse";}),"warn"],
-    ["Agotados",countBy(function(m){return m.estado==="agotado";}),"bad"],
-    ["Reponer",countBy(function(m){return m.reponer;}),""],
-    ["Códigos EAN",state.eans.length,""]];
-  el.innerHTML=s.map(function(r){ return '<div class="st'+(r[2]&&r[1]>0?" "+r[2]:"")+'"><b>'+r[1]+'</b><span>'+esc(r[0])+'</span></div>'; }).join("");
+  var s=[["Unidades",un,"",null,0],["Números",Object.keys(cols).length,"",null,0],["Puntas",tiposPresentes().length,"",null,1],
+    ["Por acabarse",countBy(function(m){return m.estado==="por_acabarse";}),"warn",{act:"festado",k:"por_acabarse",on:!!ui.estados.por_acabarse},0],
+    ["Agotados",countBy(function(m){return m.estado==="agotado";}),"bad",{act:"festado",k:"agotado",on:!!ui.estados.agotado},1],
+    ["Reponer",countBy(function(m){return m.reponer;}),"",{act:"solorep",k:"",on:ui.soloRep},0],
+    ["Códigos EAN",state.eans.length,"",null,1]];
+  el.innerHTML=s.map(function(r){
+    var cls='st'+(r[2]&&r[1]>0?" "+r[2]:"")+(r[4]?" sec":""), inner='<b>'+r[1]+'</b><span>'+esc(r[0])+'</span>';
+    if(r[3]) return '<button type="button" class="'+cls+'" data-act="'+r[3].act+'" data-k="'+r[3].k+'" aria-pressed="'+(r[3].on?"true":"false")+'" title="Filtrar">'+inner+'</button>';
+    return '<div class="'+cls+'">'+inner+'</div>';
+  }).join("");
 }
 function paintChips(){
   var ct=byId("chips-tipo"), ce=byId("chips-estado"); if(!ct||!ce) return;
@@ -779,6 +786,7 @@ function paintChips(){
 }
 function paintInv(){
   var list=sortInv(filteredInv()), el=byId("invresults"); if(!el) return;
+  sw.open=null;
   var act=keysOf(ui.tipos).length+keysOf(ui.estados).length+(ui.soloRep?1:0)+(ui.q.trim()?1:0);
   byId("rescount").innerHTML='<span>'+list.length+' de '+state.markers.length+' unidades</span>'+
     (act?'<button type="button" class="tiny" data-act="clearf">Limpiar filtros</button>':'');
@@ -1021,7 +1029,8 @@ function sheetEscaner(){
         '<button type="button" class="big alt" data-act="camstop" id="camstop" hidden>Detener</button>'+
       '</div>'+
       '<input type="file" id="photoin" accept="image/*" capture="environment" hidden>'+
-      '<form class="manual" id="manualform" autocomplete="off">'+
+      '<button type="button" class="tiny" data-act="manual-toggle" id="manualtoggle" aria-expanded="false" style="align-self:flex-start">Escribir el código a mano</button>'+
+      '<form class="manual" id="manualform" autocomplete="off" hidden>'+
         '<input type="text" id="eanin" inputmode="numeric" placeholder="4902778…" aria-label="Código de barras" maxlength="20">'+
         '<button type="submit" class="big alt">Buscar</button>'+
       '</form>'+
@@ -1032,6 +1041,8 @@ function sheetEscaner(){
         '<span class="h" id="reghint"></span></div><div id="reglist"></div></div>'+
     '</section></div>';
 }
+function showManual(on){ var f=byId("manualform"), t=byId("manualtoggle"); if(!f) return;
+  f.hidden=!on; if(t){ t.setAttribute("aria-expanded",on?"true":"false"); t.hidden=on; } }
 function camMsg(){
   var n=byId("camnote"); if(!n) return;
   if(ui.scan.msg){ n.innerHTML='<b>'+esc(ui.scan.msg)+'</b>'; return; }
@@ -1139,7 +1150,7 @@ function handlePhoto(file){
       if(code){ onCode(code); }
       else {
         ui.scan.err="No logré leer el código en esa foto.";
-        camMsg();
+        camMsg(); showManual(true);
         var e=byId("eanin"); if(e) e.focus();
       }
     });
@@ -1220,7 +1231,7 @@ function startCam(){
       : "No pude abrir la cámara aquí.";
     ui.scan.active=false;
     vp.innerHTML='<div class="ph">'+esc(ui.scan.err)+'</div>';
-    camMsg();
+    camMsg(); showManual(true);
     var e2=byId("eanin"); if(e2) e2.focus();
   });
 }
@@ -1232,7 +1243,7 @@ function openModal(id){
   ui.modal._new=!mk; ui.modal._del=false;
   paintModal();
 }
-function closeModal(){ ui.modal=null; byId("overlay").innerHTML=""; document.body.style.overflow=""; }
+function closeModal(){ ui.modal=null; byId("overlay").innerHTML=""; document.body.style.overflow=""; if(ui.ficha) paintFicha(); }
 function paintModal(){
   var mk=ui.modal, ov=byId("overlay");
   if(!mk){ ov.innerHTML=""; document.body.style.overflow=""; return; }
@@ -1241,8 +1252,8 @@ function paintModal(){
   var n=pname(mk.codigo);
   var eans=state.eans.filter(function(e){ return e.tipo===mk.tipo&&e.codigo===mk.codigo; });
   ov.innerHTML='<div class="backdrop" data-act="backdrop"><div class="modal" role="dialog" aria-modal="true" aria-label="'+
-    (mk._new?"Agregar marcador":"Editar marcador")+'">'+
-    '<div class="mhead"><h2>'+(mk._new?"Agregar marcador":"Editar marcador")+'</h2>'+
+    (mk._new?"Agregar marcador":"Editar datos")+'">'+
+    '<div class="mhead"><h2>'+(mk._new?"Agregar marcador":"Editar datos")+'</h2>'+
       '<button type="button" class="tiny" data-act="mclose">Cerrar</button></div>'+
     '<div class="mbody">'+
       '<div class="fgrid">'+
@@ -1339,6 +1350,12 @@ function wishFromCode(code){
 
 /* ===================== marco ===================== */
 var SHEETS=[["cajon","Cajón"],["rueda","Rueda"],["escaner","Escáner"],["compras","Compras"]];
+var SVG_TAB={
+  cajon:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18M10 8h4M10 16h4"></path></svg>',
+  rueda:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 3v6M12 15v6M3 12h6M15 12h6"></path></svg>',
+  escaner:'<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"></path><path d="M8 9v6M11 9v6M14 9v6M16 9v6"></path></svg>',
+  compras:'<svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6"></path><circle cx="9" cy="20" r="1.2"></circle><circle cx="17" cy="20" r="1.2"></circle></svg>'
+};
 function shell(){
   return '<div class="app">'+
     '<header class="bar">'+
@@ -1350,8 +1367,22 @@ function shell(){
     '</header>'+
     '<main class="sheet" id="sheet"></main>'+
     '<div class="foot"><p id="footnote"></p></div>'+
-    '<div id="overlay"></div></div>';
+    '<div id="overlay"></div>'+
+    '<div class="fabscrim" id="fabscrim" data-act="fab-close" hidden></div>'+
+    '<div class="fab" id="fab" data-open="0">'+
+      '<div class="fabmenu" id="fabmenu" hidden>'+
+        '<button type="button" data-act="fab-scan">Escanear código</button>'+
+        '<button type="button" data-act="fab-add">Agregar a mano</button>'+
+      '</div>'+
+      '<button type="button" class="fabbtn" data-act="fab" aria-label="Agregar" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button>'+
+    '</div>'+
+    '<nav class="tabbar" aria-label="Secciones">'+
+      SHEETS.map(function(s){ return '<button type="button" data-act="sheet" data-k="'+s[0]+'">'+SVG_TAB[s[0]]+'<span>'+esc(s[1])+'</span></button>'; }).join("")+
+    '</nav>'+
+    '</div>';
 }
+function setFab(open){ var f=byId("fab"); if(!f) return; f.setAttribute("data-open",open?"1":"0"); byId("fabmenu").hidden=!open; byId("fabscrim").hidden=!open;
+  f.querySelector(".fabbtn").setAttribute("aria-expanded",open?"true":"false"); }
 var mounted=null;
 function render(){
   rebuildColors();
@@ -1373,10 +1404,12 @@ function render(){
   byId("footnote").textContent = ui.readOnly
     ? "Solo lectura: puedes mirar, pero los cambios no se guardarán."
     : "Cada marcador se identifica por su número POSCA, el nombre de la gama y —cuando lo escaneas— su código de barras. Los cambios se guardan solos en este dispositivo; en la pastilla de arriba puedes exportar un respaldo.";
+  var fab=byId("fab"); if(fab){ fab.hidden=ui.sheet!=="cajon"; if(fab.hidden) setFab(false); }
   if(ui.sheet==="cajon"){ paintStats(); paintChips(); paintInv(); }
   else if(ui.sheet==="rueda") paintWheel();
   else if(ui.sheet==="escaner") paintScan();
   else paintCompras();
+  if(ui.ficha) paintFicha();
 }
 function bindCajon(){
   var q=byId("q"); if(q) q.addEventListener("input",function(e){ ui.q=e.target.value; paintInv(); });
@@ -1404,12 +1437,158 @@ function bindScan(){
   if(p) p.addEventListener("change",function(e){ handlePhoto(e.target.files&&e.target.files[0]); });
 }
 
+
+/* ===================== ficha (hoja inferior, guardado automático) ===================== */
+function emptyState(){ return {version:3,markers:[],suggestions:[],eans:[],actualizado:today()}; }
+function refreshBehind(){
+  if(ui.sheet==="cajon"){ paintStats(); paintChips(); paintInv(); }
+  else if(ui.sheet==="compras") paintCompras();
+  else if(ui.sheet==="escaner") paintScan();
+}
+function openFicha(id){ if(!findMk(id)) return; ui.ficha=id; ui.fichaDel=false; paintFicha(); }
+function closeFicha(){ ui.ficha=null; ui.fichaDel=false; if(!ui.modal){ var ov=byId("overlay"); if(ov) ov.innerHTML=""; document.body.style.overflow=""; } }
+function paintFicha(){
+  var mk=ui.ficha?findMk(ui.ficha):null, ov=byId("overlay"); if(!ov) return;
+  if(!mk){ closeFicha(); return; }
+  if(ui.modal) return;
+  document.body.style.overflow="hidden";
+  var n=pname(mk.codigo), ti=tipInfo(mk.tipo);
+  var eans=state.eans.filter(function(e){ return e.tipo===mk.tipo&&e.codigo===mk.codigo; });
+  var foot = ui.fichaDel
+    ? '<span class="err" style="flex:1;font-size:12.5px">¿Eliminar esta unidad del cajón?</span>'+
+      '<button type="button" class="dangerbtn" data-act="f-del-yes">Sí, eliminar</button><button type="button" class="big alt" data-act="f-del-no">No</button>'
+    : '<button type="button" class="del" data-act="f-del">Eliminar</button>'+
+      '<button type="button" class="big alt" style="flex:1" data-act="f-wheel" data-hex="'+esc(mk.hex)+'">Ver en rueda</button>'+
+      '<button type="button" class="big" style="flex:1" data-act="f-done">Listo</button>';
+  ov.innerHTML='<div class="backdrop" data-act="fbackdrop"><div class="ficha" role="dialog" aria-modal="true" aria-label="Ficha del marcador">'+
+    '<div class="grip"><i></i></div>'+
+    '<div class="fhead"><span class="lbl">Ficha</span><span class="lbl" style="display:inline-flex;align-items:center;gap:6px;color:var(--dim)"><span class="dotst" style="background:var(--acc)"></span>Se guarda solo</span></div>'+
+    '<div class="fslab"><div class="slab" '+sty(mk.hex)+'><span class="n">'+esc(mk.codigo||"—")+'</span></div>'+
+      '<div class="fi"><b>'+esc(nameEn(mk)||mk.color||"(sin nombre)")+'</b><span>'+esc(nameEs(mk))+(mk.familia!=="estandar"?' · '+esc(famLabel(mk.familia)):' · Estándar')+'</span>'+
+      '<span class="mt">'+esc(mk.hex||"—")+' · '+esc(mk.tipo)+' · '+esc(ti.punta)+' '+esc(ti.ancho)+'</span></div></div>'+
+    '<div class="fbody">'+
+      '<div class="frow"><span class="lbl">Cantidad</span><div class="stepper">'+
+        '<button type="button" data-act="f-dec" aria-label="Restar una unidad">−</button><output aria-live="polite">'+mk.cantidad+'</output>'+
+        '<button type="button" data-act="f-inc" aria-label="Sumar una unidad">+</button></div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Estado</span><div class="seg" role="group" aria-label="Estado">'+
+        ESTADOS.map(function(e){ return '<button type="button" class="e-'+e.k+'" data-act="f-est" data-k="'+e.k+'" aria-pressed="'+(mk.estado===e.k?"true":"false")+'">'+esc(e.label)+'</button>'; }).join("")+
+      '</div></div>'+
+      '<div class="frow"><div style="flex:1;display:flex;flex-direction:column"><span style="font-size:15px;font-weight:700">Marcar para reponer</span><span style="font-size:12px;color:var(--dim)">Aparece en Compras</span></div>'+
+        '<button type="button" class="toggle" data-act="f-rep" role="switch" aria-checked="'+(mk.reponer?"true":"false")+'" aria-pressed="'+(mk.reponer?"true":"false")+'" aria-label="Marcar para reponer"><i></i></button></div>'+
+      '<div class="eanrow"><span class="code">'+(eans.length?eans.map(function(e){ return esc(e.ean)+(e.verificado?"":" ?"); }).join(" · "):"— sin código de barras")+'</span>'+
+        '<button type="button" class="big alt" style="min-height:36px;padding:0 12px;font-size:13px" data-act="f-scan">'+(eans.length?"Escanear otro":"Escanear")+'</button></div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px"><label class="lbl" for="f-notas-live">Notas</label>'+
+        '<textarea id="f-notas-live" placeholder="Estado de la punta, dónde lo compraste, para qué lo usas…">'+esc(mk.notas)+'</textarea></div>'+
+      '<div class="frow" style="min-height:0"><span class="mt" style="flex:1;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--faint)">'+
+        (mk.fechaCompra?"Comprado el "+esc(fmtDate(mk.fechaCompra)):"Actualizado "+esc(fmtDate(mk.actualizado)))+'</span>'+
+        '<button type="button" class="tiny" data-act="f-edit" data-id="'+esc(mk.id)+'">Editar datos</button></div>'+
+    '</div>'+
+    '<div class="ffoot">'+foot+'</div>'+
+    '</div></div>';
+  var ta=byId("f-notas-live");
+  if(ta) ta.addEventListener("input",function(){ var m=findMk(ui.ficha); if(m){ m.notas=ta.value; touch(m); queueSave(); } });
+}
+function fichaChange(fn){
+  var mk=findMk(ui.ficha); if(!mk) return;
+  fn(mk); touch(mk); queueSave(); refreshBehind(); paintFicha();
+}
+
+/* ===================== deslizar la tarjeta: +1 / reponer ===================== */
+var sw={el:null,x0:0,y0:0,dx:0,base:0,moved:false,axis:null,open:null};
+function closeSwipe(){ if(sw.open){ var iv=sw.open.querySelector(".iv"); if(iv) iv.style.transform=""; sw.open=null; } }
+document.addEventListener("pointerdown",function(e){
+  var iv=e.target.closest?e.target.closest(".swp .iv"):null;
+  if(!iv||(e.pointerType==="mouse"&&e.button!==0)) return;
+  sw.el=iv; sw.x0=e.clientX; sw.y0=e.clientY; sw.dx=0; sw.moved=false; sw.axis=null;
+  sw.base=(sw.open===iv.parentNode)?-168:0; sw.pid=e.pointerId;
+  iv.style.transition="none";
+});
+document.addEventListener("pointermove",function(e){
+  if(!sw.el) return;
+  var dx=e.clientX-sw.x0, dy=e.clientY-sw.y0;
+  if(!sw.axis){ if(Math.abs(dx)<6&&Math.abs(dy)<6) return; sw.axis=Math.abs(dx)>Math.abs(dy)?"x":"y";
+    if(sw.axis==="x"){ try{ sw.el.setPointerCapture(e.pointerId); }catch(x){} } }
+  if(sw.axis!=="x") return;
+  sw.moved=true;
+  var t=Math.max(-168,Math.min(0,sw.base+dx)); sw.dx=t;
+  sw.el.style.transform="translateX("+t+"px)";
+  if(e.cancelable) e.preventDefault();
+},{passive:false});
+function endSwipe(){
+  if(!sw.el) return;
+  var el=sw.el; el.style.transition="";
+  if(sw.axis==="x"){
+    var open=sw.dx<-84;
+    if(sw.open&&sw.open!==el.parentNode) closeSwipe();
+    el.style.transform=open?"translateX(-168px)":"";
+    sw.open=open?el.parentNode:null;
+  }
+  sw.el=null; sw.axis=null;
+  setTimeout(function(){ sw.moved=false; },60);
+}
+document.addEventListener("pointerup",endSwipe);
+document.addEventListener("pointercancel",endSwipe);
+window.__swipe={open:function(id){ var w=document.querySelector('.swp[data-id="'+id+'"]'); if(!w) return false; closeSwipe(); w.querySelector(".iv").style.transform="translateX(-168px)"; sw.open=w; return true; }};
+
+/* ===================== bienvenida (primer uso) ===================== */
+function wopt(act,cls,t,s){ return '<button type="button" class="wopt '+cls+'" data-act="'+act+'"><span style="flex:1"><b>'+esc(t)+'</b><span>'+esc(s)+'</span></span>'+SVG_CHEV+'</button>'; }
+function paintWelcome(){
+  var ov=byId("overlay"); if(!ov) return;
+  var ex=embeddedState(), nex=ex?ex.markers.length:SEED_MARKERS.length;
+  ov.innerHTML='<div class="welcome" role="dialog" aria-label="Bienvenida">'+
+    '<div class="hero"><div class="logo" aria-hidden="true"></div>'+
+      '<div><h1>Cajón POSCA</h1><div class="lbl" style="letter-spacing:.2em;margin-top:8px">Inventario · Rueda · Escáner</div></div>'+
+      '<p>Todo se guarda en este dispositivo. Sin cuenta, sin nube. Un respaldo te lo devuelve en cualquier otro.</p>'+
+      (ui.welcomeErr?'<p class="err">'+esc(ui.welcomeErr)+'</p>':'')+
+    '</div>'+
+    '<div class="opts">'+
+      wopt("w-vacio","primary","Empezar con el cajón vacío","Agregas marcadores escaneando o a mano")+
+      wopt("w-ejemplo","","Cargar un cajón de ejemplo",nex+" unidades de muestra para explorar la rueda")+
+      wopt("w-import","","Importar un respaldo","Un archivo .json exportado desde otro dispositivo")+
+    '</div><input type="file" id="wimportin" accept="application/json,.json,text/plain" hidden></div>';
+  var fi=byId("wimportin");
+  if(fi) fi.addEventListener("change",function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f) return;
+    var r=new FileReader();
+    r.onload=function(){ var s=parseState(String(r.result||"")); if(!s){ ui.welcomeErr="Ese archivo no es un respaldo válido del Cajón POSCA."; paintWelcome(); return; } finishWelcome(s); };
+    r.onerror=function(){ ui.welcomeErr="No pude leer el archivo."; paintWelcome(); };
+    r.readAsText(f);
+  });
+}
+function finishWelcome(s){
+  state=s; ui.welcome=false; ui.welcomeErr=""; storageMode="idb";
+  var ov=byId("overlay"); if(ov) ov.innerHTML="";
+  queueSave(); render();
+}
+
 /* ===================== eventos ===================== */
 document.addEventListener("click",function(ev){
   var el=ev.target.closest?ev.target.closest("[data-act]"):null; if(!el) return;
   var a=el.getAttribute("data-act"), id=el.getAttribute("data-id"), k=el.getAttribute("data-k"), mk;
-  if((a==="backdrop"||a==="dbackdrop")&&ev.target!==el) return;
+  if((a==="backdrop"||a==="dbackdrop"||a==="fbackdrop")&&ev.target!==el) return;
+  if(sw.open&&!(el.closest&&el.closest(".swp")===sw.open)&&a!=="inc"&&a!=="rep") closeSwipe();
   switch(a){
+    case "open": if(sw.moved) break; if(sw.open&&el.parentNode===sw.open){ closeSwipe(); break; } openFicha(id); break;
+    case "f-inc": fichaChange(function(m){ m.cantidad++; if(m.estado==="agotado") m.estado="nuevo"; }); break;
+    case "f-dec": fichaChange(function(m){ if(m.cantidad>0){ m.cantidad--; if(m.cantidad===0) m.estado="agotado"; } }); break;
+    case "f-est": fichaChange(function(m){ m.estado=k; if(m.estado!=="agotado"&&m.cantidad===0) m.cantidad=1; }); break;
+    case "f-rep": fichaChange(function(m){ m.reponer=!m.reponer; }); break;
+    case "f-del": ui.fichaDel=true; paintFicha(); break;
+    case "f-del-no": ui.fichaDel=false; paintFicha(); break;
+    case "f-del-yes": (function(){ var fid=ui.ficha; state.markers=state.markers.filter(function(x){ return x.id!==fid; }); closeFicha(); queueSave(); render(); })(); break;
+    case "f-done": case "fbackdrop": closeFicha(); break;
+    case "f-scan": closeFicha(); ui.sheet="escaner"; render(); window.scrollTo(0,0); break;
+    case "f-wheel": (function(){ var h=el.getAttribute("data-hex"); if(h){ ui.co=coordsOf(h,ui.mode); setPref("base",baseHex()); }
+      closeFicha(); ui.sheet="rueda"; render(); window.scrollTo(0,0); })(); break;
+    case "f-edit": closeFicha(); openModal(id); break;
+    case "fab": setFab(byId("fab").getAttribute("data-open")!=="1"); break;
+    case "fab-close": setFab(false); break;
+    case "fab-scan": setFab(false); ui.sheet="escaner"; render(); window.scrollTo(0,0); break;
+    case "fab-add": setFab(false); openModal(null); break;
+    case "manual-toggle": showManual(true); (function(){ var e2=byId("eanin"); if(e2) e2.focus(); })(); break;
+    case "w-vacio": finishWelcome(emptyState()); break;
+    case "w-ejemplo": finishWelcome(embeddedState()||freshState()); break;
+    case "w-import": (function(){ var i=byId("wimportin"); if(i){ i.value=""; i.click(); } })(); break;
     case "sheet": ui.sheet=k; render(); window.scrollTo(0,0); break;
     case "ftipo": if(ui.tipos[k]) delete ui.tipos[k]; else ui.tipos[k]=true; paintChips(); paintInv(); break;
     case "festado": if(ui.estados[k]) delete ui.estados[k]; else ui.estados[k]=true; paintChips(); paintInv(); break;
@@ -1476,7 +1655,7 @@ document.addEventListener("change",function(ev){
     if(mk){ mk.estado=el.value; if(mk.estado!=="agotado"&&mk.cantidad===0) mk.cantidad=1; touch(mk); queueSave(); render(); }
   }
 });
-document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(ui.modal) closeModal(); else if(ui.data.open) closeData(); } });
+document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(ui.modal) closeModal(); else if(ui.ficha) closeFicha(); else if(ui.data.open) closeData(); else setFab(false); } });
 var rt=null;
 window.addEventListener("resize",function(){ if(rt) clearTimeout(rt); rt=setTimeout(function(){ if(ui.sheet==="rueda") drawWheel(); },150); });
 window.addEventListener("pagehide",function(){ stopCam(); });
@@ -1598,14 +1777,17 @@ function registerSW(){
 }
 window.addEventListener("beforeinstallprompt",function(e){ e.preventDefault(); installEvt=e; if(ui.data.open) paintData(); });
 window.addEventListener("pagehide",flushSave);
-document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="hidden") flushSave(); });
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="hidden"){ flushSave(); if(ui.scan.active){ ui.scan.resume=true; stopCam(); } }
+  else if(ui.scan.resume){ ui.scan.resume=false; if(ui.sheet==="escaner") startCam(); }
+});
 
 /* ===================== arranque ===================== */
 byId("root").innerHTML=shell();
 setChip("idle","Cargando");
 loadLocal().then(function(s){
+  if(!s){ state=emptyState(); ui.welcome=true; render(); setChip("idle","Listo"); paintWelcome(); registerSW(); return; }
   state=s; render(); setChip("idle","Listo");
-  if(storageMode==="seed") queueSave();        /* primera carga: fija el estado inicial en el dispositivo */
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(function(){});
   registerSW();
 }).catch(function(e){ console.error(e); state=freshState(); render(); setChip("error","Sin guardar"); });

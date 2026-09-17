@@ -13,7 +13,7 @@ conexión y guarda todo en el dispositivo (IndexedDB + copia en localStorage). S
 | `styles.css` | Estética negra tipo envase POSCA. |
 | `sw.js` | Service worker: precachea el cascarón y las fuentes; `VERSION` controla las actualizaciones. |
 | `manifest.webmanifest` | Nombre, iconos, `standalone`, accesos directos (`?sheet=escaner`, `?sheet=rueda`). |
-| raíz (sin carpetas) | Iconos 192 / 512 / maskable / apple-touch-icon. |
+| `icons/` | Iconos 192 / 512 / maskable / apple-touch-icon. |
 | `tools/bump.py` | Sube la versión en `index.html`, `app.js` y `sw.js` a la vez. |
 | `legacy/` | El artifact original de claude.ai y su estado, como referencia histórica. |
 | `_test/test.js` | Suite Playwright (32 comprobaciones): persistencia, exportar/importar, offline, actualización. |
@@ -49,6 +49,11 @@ Los datos no se tocan: viven en IndexedDB, fuera del caché.
 Pastilla del encabezado → **Datos y respaldo** → *Exportar respaldo (.json)*.
 El mismo archivo se importa desde otro dispositivo o navegador. No hay nube: el
 respaldo es la única forma de mover el cajón entre teléfonos.
+
+## Historial
+
+- **1.1.0** (17 sep 2026) — Barra de pestañas inferior; tarjeta de una pieza que abre la ficha; ficha con guardado automático («Listo», «Eliminar» con confirmación); deslizar la tarjeta para «+1» y «Reponer»; botón «+» con «Escanear código / Agregar a mano»; bienvenida en primer uso (vacío / ejemplo / importar); estadísticas tocables como filtros; campo manual del escáner oculto hasta pedirlo; la cámara se reanuda al volver del segundo plano; contraste corregido (`faint` #8A8A94, etiquetas 11 px, texto sobre color por contraste calculado); lila como acento de selección; inputs a 16 px en móvil.
+- **1.0.0** (7 sep 2026) — Primera PWA: inventario, rueda, escáner, compras; IndexedDB + respaldo JSON; service worker offline.
 
 ## Probar en local
 
