@@ -582,7 +582,7 @@ function labelC(c){ return c.en||c.es||("POSCA "+c.code); }
    localStorage como copia de seguridad síncrona (se escribe también al
    cerrar la página). Nada sale del teléfono salvo que exportes un
    respaldo .json desde «Datos». */
-var APP_VERSION="1.1.0";
+var APP_VERSION="1.2.0";
 var DB_NAME="cajon-posca", DB_STORE="kv", DB_KEY="state", LS_KEY="posca.state";
 var timer=null, delay=400, dirty=false, storageMode="";
 function setChip(s,t){ var c=byId("savechip"); if(!c) return; c.setAttribute("data-s",s); c.querySelector(".txt").textContent=t; }
@@ -666,7 +666,7 @@ var ui={
   dots: pref("dots","1")==="1",
   layer: pref("layer","0")==="1",
   co:null, modal:null, readOnly:false,
-  data:{open:false,msg:"",pending:null,confirm:"",showRaw:false},
+  data:{open:false,msg:"",msgAt:"backup",pending:null,confirm:"",showRaw:false,zone:false},
   ficha:null, fichaDel:false, welcome:false,
   scan:{active:false, code:"", msg:"", err:"", linking:false, lastOk:""}
 };
@@ -760,10 +760,10 @@ function paintStats(){
   var el=byId("stats"); if(!el) return;
   var un=0, cols={};
   state.markers.forEach(function(m){ un+=m.cantidad; if(m.codigo) cols[m.codigo]=1; });
-  var s=[["Unidades",un,"",null,0],["Números",Object.keys(cols).length,"",null,0],["Puntas",tiposPresentes().length,"",null,1],
+  var s=[["Unidades",un,"",null,0],["Colores",Object.keys(cols).length,"",null,0],["Puntas",tiposPresentes().length,"",null,1],
     ["Por acabarse",countBy(function(m){return m.estado==="por_acabarse";}),"warn",{act:"festado",k:"por_acabarse",on:!!ui.estados.por_acabarse},0],
     ["Agotados",countBy(function(m){return m.estado==="agotado";}),"bad",{act:"festado",k:"agotado",on:!!ui.estados.agotado},1],
-    ["Reponer",countBy(function(m){return m.reponer;}),"",{act:"solorep",k:"",on:ui.soloRep},0],
+    ["Para reponer",countBy(function(m){return m.reponer;}),"",{act:"solorep",k:"",on:ui.soloRep},0],
     ["Códigos EAN",state.eans.length,"",null,1]];
   el.innerHTML=s.map(function(r){
     var cls='st'+(r[2]&&r[1]>0?" "+r[2]:"")+(r[4]?" sec":""), inner='<b>'+r[1]+'</b><span>'+esc(r[0])+'</span>';
@@ -822,7 +822,7 @@ function paintCompras(){
     '<div class="invgrid">'+l.map(invCard).join("")+'</div></div>':""; }
   var html=sec("Por acabarse","Queda poco pigmento.",bajo)+
     sec("Agotados","Sin tinta o sin unidades; siguen listados para que no se te olviden.",out)+
-    sec("En lista de compra","Marcados por ti, aunque todavía escriban bien.",rep);
+    sec("Marcados para reponer","Los marcaste tú, aunque todavía escriban bien.",rep);
   html+='<div class="blk"><div class="blkhead"><h2>Colores que no tienes</h2>'+
     '<span class="h">Anotados desde la rueda o desde un código escaneado que no reconociste.</span></div>'+
     (sug.length
@@ -836,7 +836,7 @@ function paintCompras(){
         }).join("")+'</div>'
       : emptyBox("Nada anotado","Desde la rueda, «Anotar para comprar» guarda acá los colores que te faltan; el escáner hace lo mismo con un código que no reconozcas."));
   if(!bajo.length&&!out.length&&!rep.length&&!sug.length)
-    html=emptyBox("Nada pendiente","Ningún marcador está por acabarse ni agotado, y no hay nada anotado para comprar.");
+    html=emptyBox("No falta nada","Ningún marcador está por acabarse ni agotado, y no hay colores anotados para comprar.");
   el.innerHTML=html;
 }
 
@@ -1022,14 +1022,14 @@ var camStream=null, camVideo=null, camCanvas=null, camTimer=null, detector=null,
 function sheetEscaner(){
   return '<div class="scanwrap">'+
     '<section class="card camcard">'+
-      '<div class="viewport" id="viewport"><div class="ph" id="camph">Sin imagen<br>Toma una foto del código, o escribe el número</div></div>'+
-      '<div class="crow" style="gap:9px;flex-wrap:wrap">'+
-        '<button type="button" class="big" data-act="photo">Tomar foto del código</button>'+
-        '<button type="button" class="big alt" id="cambtn" data-act="cam">Cámara en vivo</button>'+
-        '<button type="button" class="big alt" data-act="camstop" id="camstop" hidden>Detener</button>'+
+      '<div class="vpwrap"><div class="viewport" id="viewport"><div class="ph" id="camph">Abriendo la cámara…</div></div>'+
+        '<button type="button" class="camstop" data-act="camstop" id="camstop" hidden>Detener</button></div>'+
+      '<div class="camrow">'+
+        '<button type="button" class="big" id="cambtn" data-act="cam" hidden>Abrir cámara</button>'+
+        '<button type="button" class="tiny" data-act="photo">Tomar foto</button>'+
+        '<button type="button" class="tiny" data-act="manual-toggle" id="manualtoggle" aria-expanded="false">Escribir el número</button>'+
       '</div>'+
       '<input type="file" id="photoin" accept="image/*" capture="environment" hidden>'+
-      '<button type="button" class="tiny" data-act="manual-toggle" id="manualtoggle" aria-expanded="false" style="align-self:flex-start">Escribir el código a mano</button>'+
       '<form class="manual" id="manualform" autocomplete="off" hidden>'+
         '<input type="text" id="eanin" inputmode="numeric" placeholder="4902778…" aria-label="Código de barras" maxlength="20">'+
         '<button type="submit" class="big alt">Buscar</button>'+
@@ -1042,13 +1042,15 @@ function sheetEscaner(){
     '</section></div>';
 }
 function showManual(on){ var f=byId("manualform"), t=byId("manualtoggle"); if(!f) return;
-  f.hidden=!on; if(t){ t.setAttribute("aria-expanded",on?"true":"false"); t.hidden=on; } }
+  f.hidden=!on; if(t){ t.setAttribute("aria-expanded",on?"true":"false"); } }
 function camMsg(){
   var n=byId("camnote"); if(!n) return;
   if(ui.scan.msg){ n.innerHTML='<b>'+esc(ui.scan.msg)+'</b>'; return; }
   n.innerHTML = ui.scan.err
-    ? '<b>'+esc(ui.scan.err)+'</b> Prueba con «Tomar foto del código», o escribe el número que va bajo las barras.'
-    : '«Tomar foto» abre la cámara del teléfono y lee la foto: es el camino que funciona aunque el visor no deje abrir la cámara en vivo. La primera vez que leas un código, dime a qué marcador corresponde y queda memorizado.';
+    ? '<b>'+esc(ui.scan.err)+'</b> Prueba con «Tomar foto», o escribe el número que va bajo las barras.'
+    : ui.scan.active
+      ? 'Apunta al código de barras dentro del recuadro: se lee solo. La primera vez que leas un código, dime a qué marcador corresponde y queda memorizado.'
+      : 'La cámara se abre sola al entrar. Si no la deja, «Tomar foto» usa la cámara del teléfono y lee la foto.';
 }
 function paintReg(){
   var el=byId("reglist"); if(!el) return;
@@ -1163,9 +1165,9 @@ function stopCam(){
   if(camStream){ camStream.getTracks().forEach(function(t){ t.stop(); }); camStream=null; }
   ui.scan.active=false;
   var vp=byId("viewport");
-  if(vp) vp.innerHTML='<div class="ph" id="camph">Sin imagen<br>Toma una foto del código, o escribe el número</div>';
+  if(vp) vp.innerHTML='<div class="ph" id="camph">Cámara detenida</div>';
   var b=byId("camstop"); if(b) b.hidden=true;
-  var c=byId("cambtn"); if(c) c.textContent="Escanear con la cámara";
+  var c=byId("cambtn"); if(c){ c.textContent="Abrir cámara"; c.hidden=false; }
 }
 function onCode(code){
   code=normalizeCode(code);
@@ -1211,7 +1213,7 @@ function startCam(){
     vp.innerHTML='<video id="cam" playsinline muted autoplay></video><div class="reticle"></div>';
     camVideo=byId("cam"); camVideo.srcObject=st;
     var pl=camVideo.play(); if(pl&&pl.catch) pl.catch(function(){});
-    byId("camstop").hidden=false; byId("cambtn").textContent="Reintentar";
+    byId("camstop").hidden=false; byId("cambtn").hidden=true; showManual(false);
     camMsg();
     if(!detectorTried){
       detectorTried=true;
@@ -1231,6 +1233,7 @@ function startCam(){
       : "No pude abrir la cámara aquí.";
     ui.scan.active=false;
     vp.innerHTML='<div class="ph">'+esc(ui.scan.err)+'</div>';
+    var cb=byId("cambtn"); if(cb){ cb.textContent="Reintentar cámara"; cb.hidden=false; }
     camMsg(); showManual(true);
     var e2=byId("eanin"); if(e2) e2.focus();
   });
@@ -1254,7 +1257,7 @@ function paintModal(){
   ov.innerHTML='<div class="backdrop" data-act="backdrop"><div class="modal" role="dialog" aria-modal="true" aria-label="'+
     (mk._new?"Agregar marcador":"Editar datos")+'">'+
     '<div class="mhead"><h2>'+(mk._new?"Agregar marcador":"Editar datos")+'</h2>'+
-      '<button type="button" class="tiny" data-act="mclose">Cerrar</button></div>'+
+      xbtn("mclose")+'</div>'+
     '<div class="mbody">'+
       '<div class="fgrid">'+
         '<div class="field"><label for="f-tipo">Punta</label><select id="f-tipo">'+
@@ -1349,12 +1352,15 @@ function wishFromCode(code){
 }
 
 /* ===================== marco ===================== */
-var SHEETS=[["cajon","Cajón"],["rueda","Rueda"],["escaner","Escáner"],["compras","Compras"]];
+var SHEETS=[["cajon","Cajón"],["rueda","Rueda"],["escaner","Escáner"],["compras","Faltantes"]];
+var SVG_GEAR='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>';
+var SVG_X='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
+function xbtn(act,label){ return '<button type="button" class="xbtn" data-act="'+act+'" aria-label="'+esc(label||"Cerrar")+'" title="'+esc(label||"Cerrar")+'">'+SVG_X+'</button>'; }
 var SVG_TAB={
   cajon:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 12h18M10 8h4M10 16h4"></path></svg>',
   rueda:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 3v6M12 15v6M3 12h6M15 12h6"></path></svg>',
   escaner:'<svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"></path><path d="M8 9v6M11 9v6M14 9v6M16 9v6"></path></svg>',
-  compras:'<svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6"></path><circle cx="9" cy="20" r="1.2"></circle><circle cx="17" cy="20" r="1.2"></circle></svg>'
+  compras:'<svg viewBox="0 0 24 24"><path d="M9 4h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2V5a1 1 0 0 1 1-1z"></path><path d="M9 12h6M9 16h4"></path></svg>'
 };
 function shell(){
   return '<div class="app">'+
@@ -1363,7 +1369,7 @@ function shell(){
       '<div class="swi" role="group" aria-label="Vista">'+
         SHEETS.map(function(s){ return '<button type="button" data-act="sheet" data-k="'+s[0]+'">'+esc(s[1])+'</button>'; }).join("")+
       '</div>'+
-      '<button type="button" class="chipbtn" id="savechip" data-s="idle" data-act="data" title="Datos y respaldo"><span class="dotst"></span><span class="txt">Listo</span></button>'+
+      '<button type="button" class="chipbtn" id="savechip" data-s="idle" data-act="data" aria-label="Ajustes, datos y respaldo" title="Ajustes, datos y respaldo">'+SVG_GEAR+'<span class="dotst"></span><span class="txt">Listo</span></button>'+
     '</header>'+
     '<main class="sheet" id="sheet"></main>'+
     '<div class="foot"><p id="footnote"></p></div>'+
@@ -1403,7 +1409,7 @@ function render(){
   for(var i=0;i<sb.length;i++) sb[i].setAttribute("aria-pressed",sb[i].getAttribute("data-k")===ui.sheet?"true":"false");
   byId("footnote").textContent = ui.readOnly
     ? "Solo lectura: puedes mirar, pero los cambios no se guardarán."
-    : "Cada marcador se identifica por su número POSCA, el nombre de la gama y —cuando lo escaneas— su código de barras. Los cambios se guardan solos en este dispositivo; en la pastilla de arriba puedes exportar un respaldo.";
+    : "Cada marcador se identifica por su número POSCA, el nombre de la gama y —cuando lo escaneas— su código de barras. Los cambios se guardan solos en este dispositivo; en el icono de ajustes (arriba a la derecha) puedes exportar un respaldo.";
   var fab=byId("fab"); if(fab){ fab.hidden=ui.sheet!=="cajon"; if(fab.hidden) setFab(false); }
   if(ui.sheet==="cajon"){ paintStats(); paintChips(); paintInv(); }
   else if(ui.sheet==="rueda") paintWheel();
@@ -1435,6 +1441,8 @@ function bindScan(){
   if(f) f.addEventListener("submit",function(e){ e.preventDefault(); var v=byId("eanin").value; if(v.replace(/\D/g,"")) onCode(v); });
   var p=byId("photoin");
   if(p) p.addEventListener("change",function(e){ handlePhoto(e.target.files&&e.target.files[0]); });
+  /* la cámara en vivo es el camino principal: se abre sola al entrar a la lámina */
+  if(!ui.scan.active) startCam();
 }
 
 
@@ -1462,7 +1470,7 @@ function paintFicha(){
       '<button type="button" class="big" style="flex:1" data-act="f-done">Listo</button>';
   ov.innerHTML='<div class="backdrop" data-act="fbackdrop"><div class="ficha" role="dialog" aria-modal="true" aria-label="Ficha del marcador">'+
     '<div class="grip"><i></i></div>'+
-    '<div class="fhead"><span class="lbl">Ficha</span><span class="lbl" style="display:inline-flex;align-items:center;gap:6px;color:var(--dim)"><span class="dotst" style="background:var(--acc)"></span>Se guarda solo</span></div>'+
+    '<div class="fhead"><span class="lbl" style="display:inline-flex;align-items:center;gap:6px"><span class="dotst" style="background:var(--acc)"></span>Ficha · se guarda solo</span>'+xbtn("f-close","Cerrar ficha")+'</div>'+
     '<div class="fslab"><div class="slab" '+sty(mk.hex)+'><span class="n">'+esc(mk.codigo||"—")+'</span></div>'+
       '<div class="fi"><b>'+esc(nameEn(mk)||mk.color||"(sin nombre)")+'</b><span>'+esc(nameEs(mk))+(mk.familia!=="estandar"?' · '+esc(famLabel(mk.familia)):' · Estándar')+'</span>'+
       '<span class="mt">'+esc(mk.hex||"—")+' · '+esc(mk.tipo)+' · '+esc(ti.punta)+' '+esc(ti.ancho)+'</span></div></div>'+
@@ -1473,7 +1481,7 @@ function paintFicha(){
       '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">Estado</span><div class="seg" role="group" aria-label="Estado">'+
         ESTADOS.map(function(e){ return '<button type="button" class="e-'+e.k+'" data-act="f-est" data-k="'+e.k+'" aria-pressed="'+(mk.estado===e.k?"true":"false")+'">'+esc(e.label)+'</button>'; }).join("")+
       '</div></div>'+
-      '<div class="frow"><div style="flex:1;display:flex;flex-direction:column"><span style="font-size:15px;font-weight:700">Marcar para reponer</span><span style="font-size:12px;color:var(--dim)">Aparece en Compras</span></div>'+
+      '<div class="frow"><div style="flex:1;display:flex;flex-direction:column"><span style="font-size:15px;font-weight:700">Marcar para reponer</span><span style="font-size:12px;color:var(--dim)">Aparece en Faltantes</span></div>'+
         '<button type="button" class="toggle" data-act="f-rep" role="switch" aria-checked="'+(mk.reponer?"true":"false")+'" aria-pressed="'+(mk.reponer?"true":"false")+'" aria-label="Marcar para reponer"><i></i></button></div>'+
       '<div class="eanrow"><span class="code">'+(eans.length?eans.map(function(e){ return esc(e.ean)+(e.verificado?"":" ?"); }).join(" · "):"— sin código de barras")+'</span>'+
         '<button type="button" class="big alt" style="min-height:36px;padding:0 12px;font-size:13px" data-act="f-scan">'+(eans.length?"Escanear otro":"Escanear")+'</button></div>'+
@@ -1576,7 +1584,8 @@ document.addEventListener("click",function(ev){
     case "f-del": ui.fichaDel=true; paintFicha(); break;
     case "f-del-no": ui.fichaDel=false; paintFicha(); break;
     case "f-del-yes": (function(){ var fid=ui.ficha; state.markers=state.markers.filter(function(x){ return x.id!==fid; }); closeFicha(); queueSave(); render(); })(); break;
-    case "f-done": case "fbackdrop": closeFicha(); break;
+    case "f-close": case "fbackdrop": closeFicha(); break;
+    case "f-done": (function(){ if(el.disabled) return; flushSave(); el.textContent="Guardado ✓"; el.classList.add("done"); el.disabled=true; setTimeout(closeFicha,450); })(); break;
     case "f-scan": closeFicha(); ui.sheet="escaner"; render(); window.scrollTo(0,0); break;
     case "f-wheel": (function(){ var h=el.getAttribute("data-hex"); if(h){ ui.co=coordsOf(h,ui.mode); setPref("base",baseHex()); }
       closeFicha(); ui.sheet="rueda"; render(); window.scrollTo(0,0); })(); break;
@@ -1605,16 +1614,17 @@ document.addEventListener("click",function(ev){
     case "mclose": case "backdrop": closeModal(); break;
     case "data": if(swWaiting){ applyUpdate(); } else openData(); break;
     case "dclose": case "dbackdrop": closeData(); break;
-    case "dexport": exportBackup(); break;
-    case "dcopy": copyBackup(); break;
+    case "dzone": ui.data.zone=!ui.data.zone; ui.data.confirm=""; paintData(); break;
+    case "dexport": ui.data.msgAt="backup"; exportBackup(); break;
+    case "dcopy": ui.data.msgAt="backup"; copyBackup(); break;
     case "dimport": (function(){ var i=byId("importin"); if(i){ i.value=""; i.click(); } })(); break;
-    case "dimport-ok": applyImport(); break;
+    case "dimport-ok": ui.data.msgAt="backup"; applyImport(); break;
     case "dimport-no": ui.data.pending=null; paintData(); break;
     case "dreset": ui.data.confirm=k; paintData(); break;
     case "dreset-no": ui.data.confirm=""; paintData(); break;
-    case "dreset-yes": resetInventory(k); break;
-    case "dcheck": checkUpdate(); break;
-    case "dupdate": applyUpdate(); break;
+    case "dreset-yes": ui.data.msgAt="zone"; resetInventory(k); break;
+    case "dcheck": ui.data.msgAt="app"; checkUpdate(); break;
+    case "dupdate": ui.data.msgAt="app"; applyUpdate(); break;
     case "dinstall": (function(){ if(installEvt){ installEvt.prompt(); installEvt=null; closeData(); } })(); break;
     case "msave": saveModal(); break;
     case "mdel": ui.modal._del=true; paintModal(); break;
@@ -1701,7 +1711,7 @@ function importBackupText(text){
 function applyImport(){
   if(!ui.data.pending) return;
   state=ui.data.pending; ui.data.pending=null;
-  ui.data.msg="Respaldo importado: "+state.markers.length+" unidades, "+state.suggestions.length+" anotaciones, "+state.eans.length+" códigos.";
+  ui.data.msg="Respaldo importado: "+state.markers.length+" unidades, "+state.suggestions.length+" colores anotados, "+state.eans.length+" códigos.";
   queueSave(); render(); paintData();
 }
 function resetInventory(kind){
@@ -1709,15 +1719,16 @@ function resetInventory(kind){
   ui.data.confirm=""; ui.data.msg = kind==="vacio" ? "Cajón vaciado." : "Inventario base restaurado.";
   queueSave(); render(); paintData();
 }
-function openData(){ ui.data.open=true; ui.data.msg=""; ui.data.pending=null; ui.data.confirm=""; ui.data.showRaw=false; paintData(); }
+function openData(){ ui.data.open=true; ui.data.msg=""; ui.data.msgAt="backup"; ui.data.pending=null; ui.data.confirm=""; ui.data.showRaw=false; ui.data.zone=false; paintData(); }
 function closeData(){ ui.data.open=false; byId("overlay").innerHTML=""; document.body.style.overflow=""; }
 function paintData(){
   if(!ui.data.open) return;
   var ov=byId("overlay"); document.body.style.overflow="hidden";
   var un=0; state.markers.forEach(function(m){ un+=m.cantidad; });
   var p=ui.data.pending, pun=0; if(p) p.markers.forEach(function(m){ pun+=m.cantidad; });
-  var h='<div class="backdrop" data-act="dbackdrop"><div class="modal" role="dialog" aria-modal="true" aria-label="Datos">'+
-    '<div class="mhead"><h2>Datos y respaldo</h2><button type="button" class="tiny" data-act="dclose">Cerrar</button></div>'+
+  function note(at){ return ui.data.msg&&ui.data.msgAt===at?'<div class="note" style="margin:0" role="status">'+esc(ui.data.msg)+'</div>':''; }
+  var h='<div class="backdrop" data-act="dbackdrop"><div class="modal" role="dialog" aria-modal="true" aria-label="Ajustes y datos">'+
+    '<div class="mhead"><h2>Ajustes y datos</h2>'+xbtn("dclose")+'</div>'+
     '<div class="mbody">'+
       '<div class="stats" style="margin:0">'+
         '<div class="st"><b>'+un+'</b><span>Unidades</span></div>'+
@@ -1725,34 +1736,40 @@ function paintData(){
         '<div class="st"><b>'+state.eans.length+'</b><span>Códigos EAN</span></div>'+
         '<div class="st"><b style="font-size:13px;padding-top:4px">'+esc(fmtDate(state.actualizado))+'</b><span>Último cambio</span></div>'+
       '</div>'+
-      '<p class="modenote">Todo se guarda en este dispositivo ('+esc(storageLabel())+'). No hay cuenta ni nube: si cambias de teléfono o borras los datos del navegador, el respaldo es lo único que te devuelve el cajón. Exporta uno de vez en cuando.</p>'+
+      '<div class="dsec" style="border-top:0;padding-top:0"><span class="lbl">Respaldo</span>'+
+      '<p class="modenote" style="margin:0">Todo se guarda en este dispositivo ('+esc(storageLabel())+'). No hay cuenta ni nube: si cambias de teléfono o borras los datos del navegador, el respaldo es lo único que te devuelve el cajón. Exporta uno de vez en cuando.</p>'+
       '<div class="crow" style="flex-wrap:wrap;gap:8px">'+
         '<button type="button" class="big" data-act="dexport">Exportar respaldo (.json)</button>'+
-        '<button type="button" class="big alt" data-act="dcopy">Copiar JSON</button>'+
         '<button type="button" class="big alt" data-act="dimport">Importar respaldo</button>'+
+        '<button type="button" class="tiny" data-act="dcopy">Copiar JSON</button>'+
         '<input type="file" id="importin" accept="application/json,.json,text/plain" hidden>'+
       '</div>'+
       (ui.data.showRaw?'<div class="field"><label>JSON del cajón</label><textarea readonly rows="6" onclick="this.select()">'+esc(serialize())+'</textarea></div>':'')+
-      (p?'<div class="confirm"><span class="t">El respaldo trae <b>'+pun+' unidades</b>, '+p.suggestions.length+' anotaciones y '+p.eans.length+' códigos (último cambio '+esc(fmtDate(p.actualizado))+'). Reemplaza <b>todo</b> lo que hay ahora.</span>'+
+      (p?'<div class="confirm"><span class="t">El respaldo trae <b>'+pun+' unidades</b>, '+p.suggestions.length+' colores anotados y '+p.eans.length+' códigos (último cambio '+esc(fmtDate(p.actualizado))+'). Reemplaza <b>todo</b> lo que hay ahora.</span>'+
         '<button type="button" class="big" data-act="dimport-ok">Reemplazar</button><button type="button" class="big alt" data-act="dimport-no">Cancelar</button></div>':'')+
-      (ui.data.msg?'<div class="note" style="margin:0">'+esc(ui.data.msg)+'</div>':'')+
-      '<div class="field"><label>Zona delicada</label>'+
-        (ui.data.confirm?'<div class="confirm"><span class="t">'+(ui.data.confirm==="vacio"?"Se borran todas las unidades, anotaciones y códigos.":"Se vuelve al inventario base con el que nació la app.")+' ¿Seguro?</span>'+
-          '<button type="button" class="dangerbtn" data-act="dreset-yes" data-k="'+ui.data.confirm+'">Sí, hazlo</button><button type="button" class="big alt" data-act="dreset-no">No</button></div>'
-        :'<div class="crow" style="flex-wrap:wrap;gap:8px"><button type="button" class="dangerbtn" data-act="dreset" data-k="vacio">Vaciar cajón</button>'+
-          '<button type="button" class="dangerbtn" data-act="dreset" data-k="base">Restaurar inventario base</button></div>')+
+      note("backup")+
       '</div>'+
-      '<div class="field"><label>Aplicación</label>'+
+      '<div class="dsec"><span class="lbl">Aplicación</span>'+
         '<div class="crow" style="flex-wrap:wrap;gap:8px;align-items:center">'+
           '<span class="mono" style="font-size:11.5px;color:var(--dim)">Cajón POSCA v'+APP_VERSION+(isStandalone()?" · instalada":" · en el navegador")+'</span>'+
           (swWaiting?'<button type="button" class="big" data-act="dupdate">Instalar actualización</button>':'<button type="button" class="big alt" data-act="dcheck">Buscar actualización</button>')+
           (installEvt?'<button type="button" class="big" data-act="dinstall">Instalar en este dispositivo</button>':'')+
         '</div>'+
-        (isIOS()&&!isStandalone()?'<p class="modenote">En iPhone: toca <b>Compartir</b> en Safari y luego <b>Añadir a pantalla de inicio</b>. Así se abre como app, a pantalla completa y con cámara.</p>':'')+
+        note("app")+
+        (isIOS()&&!isStandalone()?'<p class="modenote" style="margin:0">En iPhone: toca <b>Compartir</b> en Safari y luego <b>Añadir a pantalla de inicio</b>. Así se abre como app, a pantalla completa y con cámara.</p>':'')+
+      '</div>'+
+      '<div class="dsec">'+
+        '<button type="button" class="tiny" data-act="dzone" aria-expanded="'+(ui.data.zone?"true":"false")+'" style="align-self:flex-start">'+(ui.data.zone?"Ocultar zona delicada":"Zona delicada…")+'</button>'+
+        (ui.data.zone?'<div class="zone"><p>Estas dos acciones borran lo que hay en el cajón. Exporta un respaldo antes.</p>'+
+          (ui.data.confirm?'<div class="confirm"><span class="t">'+(ui.data.confirm==="vacio"?"Se borran todas las unidades, colores anotados y códigos.":"Se vuelve al inventario base con el que nació la app.")+' ¿Seguro?</span>'+
+            '<button type="button" class="dangerbtn" data-act="dreset-yes" data-k="'+ui.data.confirm+'">Sí, hazlo</button><button type="button" class="big alt" data-act="dreset-no">No</button></div>'
+          :'<div class="crow" style="flex-wrap:wrap;gap:8px"><button type="button" class="dangerbtn" data-act="dreset" data-k="vacio">Vaciar cajón</button>'+
+            '<button type="button" class="dangerbtn" data-act="dreset" data-k="base">Restaurar inventario base</button></div>')+
+          note("zone")+'</div>':'')+
       '</div>'+
     '</div></div></div>';
   ov.innerHTML=h;
-  var fi=byId("importin"); if(fi) fi.addEventListener("change",function(e){ importBackupFile(e.target.files&&e.target.files[0]); });
+  var fi=byId("importin"); if(fi) fi.addEventListener("change",function(e){ ui.data.msgAt="backup"; importBackupFile(e.target.files&&e.target.files[0]); });
 }
 function checkUpdate(){
   if(!swReg){ ui.data.msg="Sin service worker (¿estás en http o en un navegador antiguo?)."; paintData(); return; }

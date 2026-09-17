@@ -52,6 +52,7 @@ respaldo es la única forma de mover el cajón entre teléfonos.
 
 ## Historial
 
+- **1.2.0** (17 sep 2026) — Escáner abre directo en la cámara en vivo (foto y número a mano como alternativas pequeñas; «Reintentar cámara» si falla); pastilla de estado → icono de ajustes (solo muestra texto para «Actualizar» / «Sin guardar»); modal «Ajustes y datos» con X, secciones Respaldo / Aplicación y zona delicada plegada tras «Zona delicada…»; ficha con X arriba y «Listo» → «Guardado ✓» antes de cerrar; estadísticas «Números distintos» y «Para reponer»; pestaña «Compras» → «Faltantes». Suite: 56 comprobaciones.
 - **1.1.0** (17 sep 2026) — Barra de pestañas inferior; tarjeta de una pieza que abre la ficha; ficha con guardado automático («Listo», «Eliminar» con confirmación); deslizar la tarjeta para «+1» y «Reponer»; botón «+» con «Escanear código / Agregar a mano»; bienvenida en primer uso (vacío / ejemplo / importar); estadísticas tocables como filtros; campo manual del escáner oculto hasta pedirlo; la cámara se reanuda al volver del segundo plano; contraste corregido (`faint` #8A8A94, etiquetas 11 px, texto sobre color por contraste calculado); lila como acento de selección; inputs a 16 px en móvil.
 - **1.0.0** (7 sep 2026) — Primera PWA: inventario, rueda, escáner, compras; IndexedDB + respaldo JSON; service worker offline.
 
